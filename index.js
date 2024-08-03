@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 require("dotenv").config();
 
-// Access the token from the environment variables
+// Access the token and other IDs from the environment variables
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
 const guildId = process.env.GUILD_ID;
@@ -28,23 +28,19 @@ const commands = [];
 
 // Load command files
 const foldersPath = path.join(__dirname, "commands");
-const commandFolders = fs.readdirSync(foldersPath);
+const commandFiles = fs.readdirSync(foldersPath).filter(file => file.endsWith(".js"));
 
-for (const folder of commandFolders) {
-    const commandsPath = path.join(foldersPath, folder);
-    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith(".js"));
-    for (const file of commandFiles) {
-        const filePath = path.join(commandsPath, file);
-        const command = require(filePath);
+for (const file of commandFiles) {
+    const filePath = path.join(foldersPath, file);
+    const command = require(filePath);
 
-        // Set a new item in the Collection
-        if ("data" in command && "execute" in command) {
-            client.commands.set(command.data.name, command);
-            // Add the command's JSON data to the commands array for registration
-            commands.push(command.data.toJSON());
-        } else {
-            console.log(`[WARNING] The command at ${filePath} does not have a data or execute property.`);
-        }
+    // Set a new item in the Collection
+    if ("data" in command && "execute" in command) {
+        client.commands.set(command.data.name, command);
+        // Add the command's JSON data to the commands array for registration
+        commands.push(command.data.toJSON());
+    } else {
+        console.log(`[WARNING] The command at ${filePath} does not have a data or execute property.`);
     }
 }
 
