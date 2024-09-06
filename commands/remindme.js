@@ -31,14 +31,10 @@ module.exports = {
                     option.setName('message')
                         .setDescription('The reminder message')
                         .setRequired(true))
-                .addUserOption(option =>
-                    option.setName('user')
-                        .setDescription('Select a user to mention')
-                        .setRequired(false))
-                .addRoleOption(option =>
-                    option.setName('role')
-                        .setDescription('Select a role to mention')
-                        .setRequired(false)))
+                .addStringOption(option =>
+                    option.setName('mentions')
+                        .setDescription('Mention users by tagging them (@User1 @User2 ...)')
+                        .setRequired(false))) // Optional mention string for multiple users
         .addSubcommand(subcommand =>
             subcommand
                 .setName('list')
@@ -68,37 +64,33 @@ function createReminder(interaction) {
     const interval = interaction.options.getString('interval');
     const datetime = interaction.options.getString('datetime');
     const message = interaction.options.getString('message');
-    const user = interaction.options.getUser('user');
-    const role = interaction.options.getRole('role');
+    const mentions = interaction.options.getString('mentions') || ''; // Mentions entered as a string
     const id = uuidv4();
 
-    console.log(`Creating reminder: interval=${interval}, datetime=${datetime}, message=${message}, user=${user}, role=${role}, id=${id}`);
+    console.log(`Creating reminder: interval=${interval}, datetime=${datetime}, message=${message}, mentions=${mentions}, id=${id}`);
 
     const date = new Date(datetime);
     if (isNaN(date.getTime())) {
         return interaction.reply({ content: 'Invalid date format. Please use YYYY-MM-DD HH:MM', ephemeral: true });
     }
 
+    const defaultMention = mentions || `<@${interaction.user.id}>`; // Default to original user if no mentions
+
     switch (interval) {
         case 'once':
-            console.log('Scheduling a one-time reminder...');
-            scheduleSingleReminder(interaction, date, message, user, role, id);
+            scheduleSingleReminder(interaction, date, message, defaultMention, id);
             break;
         case 'daily':
-            console.log('Scheduling a daily reminder...');
-            scheduleRecurringReminder(interaction, date, message, user, role, `0 ${date.getUTCHours()} * * *`, id);
+            scheduleRecurringReminder(interaction, date, message, defaultMention, `0 ${date.getUTCHours()} * * *`, id);
             break;
         case 'weekly':
-            console.log('Scheduling a weekly reminder...');
-            scheduleRecurringReminder(interaction, date, message, user, role, `0 ${date.getUTCHours()} * * ${date.getUTCDay()}`, id);
+            scheduleRecurringReminder(interaction, date, message, defaultMention, `0 ${date.getUTCHours()} * * ${date.getUTCDay()}`, id);
             break;
         case 'monthly':
-            console.log('Scheduling a monthly reminder...');
-            scheduleRecurringReminder(interaction, date, message, user, role, `${date.getUTCMinutes()} ${date.getUTCHours()} ${date.getUTCDate()} * *`, id);
+            scheduleRecurringReminder(interaction, date, message, defaultMention, `${date.getUTCMinutes()} ${date.getUTCHours()} ${date.getUTCDate()} * *`, id);
             break;
         case '5-seconds':
-            console.log('Scheduling a reminder every 5 seconds...');
-            scheduleRecurringReminder(interaction, date, message, user, role, '*/5 * * * * *', id);
+            scheduleRecurringReminder(interaction, date, message, defaultMention, '*/5 * * * * *', id);
             break;
         default:
             interaction.reply({ content: 'Invalid interval option.', ephemeral: true });
@@ -108,27 +100,18 @@ function createReminder(interaction) {
     interaction.reply({ content: `Reminder set for ${datetime} (${interval}) with ID ${id}: ${message}`, ephemeral: true });
 }
 
-function scheduleSingleReminder(interaction, date, message, user, role, id) {
+function scheduleSingleReminder(interaction, date, message, mentions, id) {
     const now = new Date();
     const delay = date.getTime() - now.getTime();
-
-    console.log(`Current time: ${now}`);
-    console.log(`Scheduled time: ${date}`);
-    console.log(`Delay in ms: ${delay}`);
 
     if (delay <= 0) {
         interaction.reply({ content: 'The date and time must be in the future!', ephemeral: true });
         return;
     }
 
-    const mention = user ? `<@${user.id}>` : role ? `<@&${role.id}>` : `<@${interaction.user.id}>`;
-
     const timeout = setTimeout(async () => {
-        console.log(`Sending reminder for message: ${message}`);
         try {
-            // Use `interaction.channel.send` instead of follow-up to directly send a mentionable message
-            await interaction.channel.send({ content: `🔔 ${mention} Reminder: ${message}` });
-            // Remove the reminder after it triggers
+            await interaction.channel.send({ content: `🔔 ${mentions} Reminder: ${message}` });
             reminders = reminders.filter(reminder => reminder.id !== id);
         } catch (error) {
             console.error('Error sending reminder:', error);
@@ -138,16 +121,10 @@ function scheduleSingleReminder(interaction, date, message, user, role, id) {
     reminders.push({ id, type: 'single', timeout, date, message, userId: interaction.user.id });
 }
 
-function scheduleRecurringReminder(interaction, date, message, user, role, cronExpression, id) {
-    console.log(`Cron expression for reminder: ${cronExpression}`);
-
-    const mention = user ? `<@${user.id}>` : role ? `<@&${role.id}>` : `<@${interaction.user.id}>`;
-
+function scheduleRecurringReminder(interaction, date, message, mentions, cronExpression, id) {
     const task = cron.schedule(cronExpression, async () => {
-        console.log(`Sending recurring reminder for message: ${message}`);
         try {
-            // Use `interaction.channel.send` instead of follow-up to directly send a mentionable message
-            await interaction.channel.send({ content: `🔔 ${mention} Reminder: ${message}` });
+            await interaction.channel.send({ content: `🔔 ${mentions} Reminder: ${message}` });
         } catch (error) {
             console.error('Error sending recurring reminder:', error);
         }
@@ -155,8 +132,6 @@ function scheduleRecurringReminder(interaction, date, message, user, role, cronE
 
     reminders.push({ id, type: 'recurring', task, date, message, userId: interaction.user.id });
 }
-
-
 
 function listReminders(interaction) {
     if (reminders.length === 0) {
